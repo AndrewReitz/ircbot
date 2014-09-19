@@ -3,6 +3,7 @@ package com.andrewreitz.ircbot;
 import com.andrewreitz.ircbot.antlr.IrcBotBaseListener;
 import com.andrewreitz.ircbot.antlr.IrcBotLexer;
 import com.andrewreitz.ircbot.antlr.IrcBotParser;
+import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 
@@ -67,7 +68,8 @@ public class CommandParser {
 
       @Override public void exitDuckDuckGo(@NotNull DuckDuckGoContext ctx) {
         String url = String.format("http://api.duckduckgo.com/?q=%s&format=json",
-            ctx.arg().getText().replace("\"", ""));
+            ctx.arg().getText().replace("\"", "").replace(" ", "+"));
+        logger.debug("Parsed duck: url to hit {}", url);
 
         try {
           String text = RxNetty.createHttpGet(url)
@@ -78,9 +80,10 @@ public class CommandParser {
               .toFuture()
               .get(1, TimeUnit.MINUTES);
 
-          returnValue.set(text);
+          returnValue.set(Strings.isNullOrEmpty(text) ? "No instant result found" : text);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
           logger.error("Error connecting to duck duck go", e);
+          returnValue.set("Error connecting to DuckDuckGo");
         }
       }
 
@@ -90,7 +93,7 @@ public class CommandParser {
             + ctx.arg()
             .getText()
             .replace("\"", "")
-            .replace(" ", "");
+            .replace(" ", "+");
 
         logger.debug("Parsed lmgtfy: returning {}", value);
         returnValue.set(value);
