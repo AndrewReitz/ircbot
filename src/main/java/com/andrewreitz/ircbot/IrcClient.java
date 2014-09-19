@@ -10,8 +10,6 @@ import io.reactivex.netty.RxNetty;
 import io.reactivex.netty.client.RxClient;
 import io.reactivex.netty.pipeline.PipelineConfigurators;
 import rx.Observable;
-import rx.functions.Action1;
-import rx.functions.Func1;
 
 import static com.andrewreitz.ircbot.IrcClient.Command.JOIN;
 import static com.andrewreitz.ircbot.IrcClient.Command.NICK;
@@ -21,6 +19,9 @@ import static com.andrewreitz.ircbot.IrcClient.Command.PRIVMSG;
 import static com.andrewreitz.ircbot.IrcClient.Command.USER;
 
 public class IrcClient {
+  /** Messages can't be longer than 512 */
+  private static final int MESSAGE_LENGTH = 512;
+
   enum Command {
     NICK("NICK %s\n\r"),
     USER("USER %s 8 * :%s\r\n"),
@@ -90,8 +91,13 @@ public class IrcClient {
                   String message = s.substring(s.lastIndexOf(":") + 1);
                   String response = commandParser.parseMessage(message);
                   if (!Strings.isNullOrEmpty(response)) {
-                    connection.writeAndFlush(createMessage(PRIVMSG, config.getChannel(), response))
-                        .subscribe(aVoid -> logger.debug("Sending message {}", response));
+                    for (int i = 0, len = response.length(); i < len; i += MESSAGE_LENGTH) {
+                      int end = Math.min(len, i + MESSAGE_LENGTH);
+                      String responseChunk = response.substring(i, end);
+                      connection.writeAndFlush(createMessage(PRIVMSG, config.getChannel(),
+                          responseChunk))
+                          .subscribe(aVoid -> logger.debug("Sending message {}", response));
+                    }
                   }
                 }
 

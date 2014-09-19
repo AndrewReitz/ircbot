@@ -26,6 +26,7 @@ import javax.inject.Singleton;
 import io.netty.buffer.ByteBuf;
 import io.reactivex.netty.RxNetty;
 import io.reactivex.netty.protocol.http.client.FlatResponseOperator;
+import rx.functions.Func1;
 
 import static com.andrewreitz.ircbot.antlr.IrcBotParser.DictionaryContext;
 import static com.andrewreitz.ircbot.antlr.IrcBotParser.DuckDuckGoContext;
@@ -68,19 +69,24 @@ public class CommandParser {
 
       @Override public void exitDuckDuckGo(@NotNull DuckDuckGoContext ctx) {
         String url = String.format("http://api.duckduckgo.com/?q=%s&format=json",
-            ctx.arg().getText().replace("\"", "").replace(" ", "+"));
+            ctx.arg().getText().replace("\"", "").replace(" ", "%20"));
         logger.debug("Parsed duck: url to hit {}", url);
 
         try {
           String text = RxNetty.createHttpGet(url)
               .lift(FlatResponseOperator.<ByteBuf>flatResponse())
               .map(holder -> gson.fromJson(holder.getContent().toString(Charset.defaultCharset()),
-                  DuckDuckGo.class).abstractText)
+                  DuckDuckGo.class))
+              .map(duckDuckGo -> Strings.isNullOrEmpty(duckDuckGo.abstractText)
+                  ? Strings.isNullOrEmpty(duckDuckGo.answer)
+                  ? "No instant result found"
+                  : duckDuckGo.answer
+                  : duckDuckGo.abstractText)
               .toBlocking()
               .toFuture()
               .get(1, TimeUnit.MINUTES);
 
-          returnValue.set(Strings.isNullOrEmpty(text) ? "No instant result found" : text);
+          returnValue.set(text);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
           logger.error("Error connecting to duck duck go", e);
           returnValue.set("Error connecting to DuckDuckGo");
@@ -112,8 +118,12 @@ public class CommandParser {
     @SerializedName("AbstractText")
     final String abstractText;
 
-    private DuckDuckGo(String abstractText) {
+    @SerializedName("Answer")
+    final String answer;
+
+    private DuckDuckGo(String abstractText, String answer) {
       this.abstractText = abstractText;
+      this.answer = answer;
     }
   }
 }
